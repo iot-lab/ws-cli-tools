@@ -33,6 +33,17 @@ from .websocket import WebsocketClient
 
 
 def _parse_node(node_fqdn):
+    """Return the node name and site from the node fqdn.
+
+    >>> _parse_node('m3-1.saclay.iot-lab.info')
+    ['m3-1', 'saclay']
+    >>> _parse_node('nrf52dk-7.saclay')
+    ['nrf52dk-7', 'saclay']
+    >>> _parse_node('invalid')
+    Traceback (most recent call last):
+    ...
+    ValueError: Invalid node name 'invalid'...
+    """
     node_split = node_fqdn.split('.')
 
     if len(node_split) < 2:
