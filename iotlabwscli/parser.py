@@ -74,7 +74,7 @@ def parse_and_run(opts):
         return 1
 
     token = json.loads(token_response)['token']
-    nodes = common.list_nodes(api, exp_id, opts.nodes_list, 
+    nodes = common.list_nodes(api, exp_id, opts.nodes_list,
                               opts.exclude_nodes_list)
 
     # Only if nodes_list or exclude_nodes_list is not specify (nodes = [])
@@ -87,7 +87,6 @@ def parse_and_run(opts):
     if not nodes:
         return 1
 
-    # TODO: add possibility to connect to multiple nodes
     return iotlabwscli.client.start(api.url, nodes[0], exp_id, token)
 
 

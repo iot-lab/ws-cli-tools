@@ -28,6 +28,7 @@ PACKAGE = 'iotlabwscli'
 LICENSE = 'CeCILL v2.1'
 INSTALL_REQUIRES = ['argparse', 'iotlabcli>=2.0', 'tornado>=5.1']
 
+
 def readme(fname):
     """Utility function to read the README. Used for long description."""
     return open(os.path.join(os.path.dirname(__file__), fname)).read()

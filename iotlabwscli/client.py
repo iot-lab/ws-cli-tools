@@ -22,8 +22,10 @@
 
 from __future__ import print_function
 
-import os
-from urlparse import urlparse
+try:
+    from urllib.parse import urlparse
+except ImportError:  # Python 2
+    from urlparse import urlparse
 
 import tornado
 

@@ -22,8 +22,6 @@
 
 from __future__ import print_function
 
-"""Websocket client"""
-
 import sys
 
 import tornado
@@ -32,7 +30,7 @@ from tornado.websocket import websocket_connect
 from tornado.httpclient import HTTPClientError
 
 
-class WebsocketClient(object):
+class WebsocketClient:
     # pylint:disable=too-few-public-methods
     """Class that connects to a websocket server while listening to stdin."""
 
