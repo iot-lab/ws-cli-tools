@@ -62,8 +62,8 @@ def api_mock_stop():
     patch.stopall()
 
 
-class ResponseBuffer(object):
-    
+class ResponseBuffer:  # pylint:disable=too-few-public-methods
+    """Test class containing the response of a token request."""
     def __init__(self, buf):
         self.buffer = io.BytesIO(buf)
 

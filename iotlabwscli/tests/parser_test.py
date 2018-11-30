@@ -22,10 +22,10 @@
 """Tests for iotlabwscli.parser module."""
 
 import json
-import pytest
 from mock import Mock, patch
 
-from iotlabwscli.parser import main
+import tornado.httpclient
+import iotlabwscli.parser
 
 from .iotlabwscli_mock import MainMock, ResponseBuffer
 
@@ -43,33 +43,61 @@ class TestParser(MainMock):
     @patch('tornado.httpclient.HTTPClient.fetch')
     def test_main_start(self, fetch, list_nodes, start):
         """Run the parser.main."""
-
         start.return_value = 0
         list_nodes.return_value = self._nodes
         expected_json = json.dumps({"token": "token"})
         fetch.return_value = ResponseBuffer(expected_json.encode())
 
         args = ['-l', 'saclay,m3,1']
-        main(args)
+        iotlabwscli.parser.main(args)
         list_nodes.assert_called_with(self.api, 123, [self._nodes], None)
         start.assert_called_with(self.api.url, self._nodes[0], 123, "token")
+
+    @patch('iotlabwscli.client.start')
+    @patch('iotlabcli.parser.common.list_nodes')
+    @patch('tornado.httpclient.HTTPClient.fetch')
+    def test_main_start_empty(self, fetch, list_nodes, start):
+        """Run the parser.main."""
+
+        start.return_value = 0
+        list_nodes.return_value = []
+        expected_json = json.dumps({"token": "token"})
+        fetch.return_value = ResponseBuffer(expected_json.encode())
 
         exp_info_res = {"items": [{"network_address": node}
                                   for node in self._nodes]}
         with patch.object(self.api, 'get_experiment_info',
                           Mock(return_value=exp_info_res)):
-            list_nodes.return_value = []
-            with pytest.raises(SystemExit):
-                main(args)
+            iotlabwscli.parser.main([])
+            list_nodes.assert_called_with(self.api, 123, None, None)
+            start.assert_called_with(self.api.url, self._nodes[0],
+                                     123, "token")
 
-        # exp_info_res = {"items": [{"network_address": node}
-        #                           for node in self._nodes]}
-        # with patch.object(self.api, 'get_experiment_info',
-        #                   Mock(return_value=exp_info_res)):
-        #     list_nodes.return_value = []
-        #     args = ['flash-m3', 'firmware.elf']
-        #     open_a8_parser.main(args)
-        #     list_nodes.assert_called_with(self.api, 123, None, None)
-        #     flash_m3.assert_called_with({'user': 'username', 'exp_id': 123},
-        #                                 self._root_nodes,
-        #                                 'firmware.elf', verbose=False)
+    @patch('iotlabwscli.client.start')
+    @patch('iotlabcli.parser.common.list_nodes')
+    @patch('tornado.httpclient.HTTPClient.fetch')
+    def test_main_start_no_node(self, fetch, list_nodes, start):
+        """Run the parser.main."""
+
+        start.return_value = 0
+        list_nodes.return_value = []
+        expected_json = json.dumps({"token": "token"})
+        fetch.return_value = ResponseBuffer(expected_json.encode())
+        exp_info_res = {"items": []}
+
+        with patch.object(self.api, 'get_experiment_info',
+                          Mock(return_value=exp_info_res)):
+            iotlabwscli.parser.main([])
+            list_nodes.assert_called_with(self.api, 123, None, None)
+            assert start.call_count == 0
+
+    @patch('iotlabwscli.client.start')
+    @patch('iotlabcli.parser.common.list_nodes')
+    @patch('tornado.httpclient.HTTPClient.fetch')
+    def test_main_fetch_failed(self, fetch, list_nodes, start):
+        # pylint:disable=no-self-use
+        """Run the parser.main."""
+        fetch.side_effect = tornado.httpclient.HTTPClientError(123)
+        iotlabwscli.parser.main([])
+        assert list_nodes.call_count == 0
+        assert start.call_count == 0
