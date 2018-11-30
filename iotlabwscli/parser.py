@@ -34,12 +34,13 @@ from iotlabcli import helpers
 from iotlabcli import rest
 from iotlabcli.parser import common
 from iotlabcli.parser.common import _get_experiment_nodes_list
+
 import iotlabwscli.client
 
 
 def parse_options():
     """Parse command line option."""
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser()
     common.add_auth_arguments(parser, False)
     common.add_output_formatter(parser)
     # nodes list or exclude list
