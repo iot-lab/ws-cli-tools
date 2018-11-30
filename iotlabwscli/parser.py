@@ -71,6 +71,7 @@ def parse_and_run(opts):
     try:
         token_response = client.fetch(request).buffer.read()
     except tornado.httpclient.HTTPClientError as exc:
+        # pylint:disable=superfluous-parens
         print("Failed to fetch token from API: {}".format(exc))
         return 1
 
