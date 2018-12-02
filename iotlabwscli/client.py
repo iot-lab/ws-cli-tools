@@ -28,6 +28,7 @@ except ImportError:  # Python 2
     from urlparse import urlparse
 
 import tornado
+from tornado import gen
 
 from .websocket import WebsocketClient
 
@@ -53,15 +54,15 @@ def _parse_node(node_fqdn):
     return node_split[:2]
 
 
-def start(url, node, exp_id, token, con_type="serial"):
+def start(url, node, exp_id, user, token, con_type="serial"):
     """Start a websocket session on nodes."""
     try:
         node, site = _parse_node(node)
         host = urlparse(url).netloc
 
-        ws_url = "wss://{}:443/ws/{}/{}/{}/{}".format(
+        url = "wss://{}:443/ws/{}/{}/{}/{}".format(
             host, site, exp_id, node, con_type)
-        ws_client = WebsocketClient(ws_url, token)
+        ws_client = WebsocketClient(url, user, token)
         ws_client.run()
         tornado.ioloop.IOLoop.instance().start()
     except KeyboardInterrupt:

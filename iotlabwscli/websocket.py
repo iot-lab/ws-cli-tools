@@ -34,18 +34,20 @@ class WebsocketClient:
     # pylint:disable=too-few-public-methods
     """Class that connects to a websocket server while listening to stdin."""
 
-    def __init__(self, url, token):
+    def __init__(self, url, user, token):
         self.url = url
         self.token = token
+        self.user = user
         self.websocket = None
 
     @gen.coroutine
     def _connect(self):
         try:
             self.websocket = yield websocket_connect(
-                self.url, subprotocols=['token', self.token])
+                self.url, subprotocols=[self.user, 'token', self.token])
         except HTTPClientError as exc:
             print("Websocket connection failed: %s", exc)
+            tornado.ioloop.IOLoop.instance().stop()
             return
         print("Websocket connection opened")
 
@@ -54,7 +56,8 @@ class WebsocketClient:
         while True:
             data = yield self.websocket.read_message()
             if data is None:
-                print("Websocket connection closed")
+                print("Websocket connection closed:",
+                      self.websocket.close_reason)
                 # Let some time to the loop to catch any pending exception
                 yield gen.sleep(0.1)
                 tornado.ioloop.IOLoop.instance().stop()
@@ -78,9 +81,6 @@ class WebsocketClient:
         """Connect and listen to the websocket server and listen to stdin."""
         # Wait for connection
         yield self._connect()
-
-        if self.websocket is None:
-            raise gen.Return()
 
         # Start stdin listener as background task
         yield self._listen_stdin()

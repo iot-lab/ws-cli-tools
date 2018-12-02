@@ -89,7 +89,7 @@ def parse_and_run(opts):
     if not nodes:
         return 1
 
-    return iotlabwscli.client.start(api.url, nodes[0], exp_id, token)
+    return iotlabwscli.client.start(api.url, nodes[0], exp_id, user, token)
 
 
 def main(args=None):

@@ -51,7 +51,8 @@ class TestParser(MainMock):
         args = ['-l', 'saclay,m3,1']
         iotlabwscli.parser.main(args)
         list_nodes.assert_called_with(self.api, 123, [self._nodes], None)
-        start.assert_called_with(self.api.url, self._nodes[0], 123, "token")
+        start.assert_called_with(self.api.url, self._nodes[0], 123,
+                                 'username', 'token')
 
     @patch('iotlabwscli.client.start')
     @patch('iotlabcli.parser.common.list_nodes')
@@ -71,7 +72,7 @@ class TestParser(MainMock):
             iotlabwscli.parser.main([])
             list_nodes.assert_called_with(self.api, 123, None, None)
             start.assert_called_with(self.api.url, self._nodes[0],
-                                     123, "token")
+                                     123, 'username', 'token')
 
     @patch('iotlabwscli.client.start')
     @patch('iotlabcli.parser.common.list_nodes')
