@@ -71,7 +71,10 @@ class WebsocketClient:
         def _handle_stdin(file_descriptor, handler):
             # pylint:disable=unused-argument
             message = file_descriptor.readline().strip()
-            self.websocket.write_message(message + '\n')
+            try:
+                self.websocket.write_message(message.decode() + '\n')
+            except UnicodeDecodeError:
+                pass
         ioloop = tornado.ioloop.IOLoop.current()
         ioloop.add_handler(sys.stdin, _handle_stdin,
                            tornado.ioloop.IOLoop.READ)
