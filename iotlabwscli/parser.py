@@ -26,6 +26,11 @@ import sys
 import argparse
 import json
 
+try:
+    from urllib.parse import urlparse
+except ImportError:  # Python 2
+    from urlparse import urlparse
+
 import tornado
 import tornado.httpclient
 
@@ -60,11 +65,10 @@ def parse_and_run(opts):
     exp_id = helpers.get_current_experiment(api, opts.experiment_id)
 
     # Fetch token from new API
-    api_url = 'https://{}.iot-lab.info/api/'.format(
-        os.getenv('IOTLAB_PLATFORM') or "www")
-    url = '{}experiments/{}/token'.format(api_url, exp_id)
+    host = urlparse(api.url).netloc
+    api_url = 'https://{}/api/experiments/{}/token'.format(host, exp_id)
     request_kwargs = {'auth_username': user, 'auth_password': passwd}
-    request = tornado.httpclient.HTTPRequest(url, **request_kwargs)
+    request = tornado.httpclient.HTTPRequest(api_url, **request_kwargs)
     request.headers["Content-Type"] = "application/json"
     client = tornado.httpclient.HTTPClient()
 
