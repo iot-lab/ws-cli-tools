@@ -33,30 +33,27 @@ from .iotlabwscli_mock import MainMock, ResponseBuffer
 # pylint: disable=too-few-public-methods
 
 
+@patch('iotlabwscli.parser.start')
+@patch('iotlabcli.parser.common.list_nodes')
+@patch('tornado.httpclient.HTTPClient.fetch')
 class TestParser(MainMock):
     """Test websocket cli main parser."""
 
-    _nodes = ['m3-1.saclay.iot-lab.info']
+    _nodes = ['m3-1.saclay.iot-lab.info', 'm3-2.saclay.iot-lab.info']
 
-    @patch('iotlabwscli.client.start')
-    @patch('iotlabcli.parser.common.list_nodes')
-    @patch('tornado.httpclient.HTTPClient.fetch')
     def test_main_start(self, fetch, list_nodes, start):
         """Run the parser.main."""
         start.return_value = 0
-        list_nodes.return_value = self._nodes
         expected_json = json.dumps({"token": "token"})
         fetch.return_value = ResponseBuffer(expected_json.encode())
 
         args = ['-l', 'saclay,m3,1']
+        list_nodes.return_value = [self._nodes[0]]
         iotlabwscli.parser.main(args)
-        list_nodes.assert_called_with(self.api, 123, [self._nodes], None)
-        start.assert_called_with(self.api.url, self._nodes[0], 123,
+        list_nodes.assert_called_with(self.api, 123, [[self._nodes[0]]], None)
+        start.assert_called_with(self.api.url, [self._nodes[0]], 123,
                                  'username', 'token')
 
-    @patch('iotlabwscli.client.start')
-    @patch('iotlabcli.parser.common.list_nodes')
-    @patch('tornado.httpclient.HTTPClient.fetch')
     def test_main_start_empty(self, fetch, list_nodes, start):
         """Run the parser.main."""
 
@@ -71,12 +68,9 @@ class TestParser(MainMock):
                           Mock(return_value=exp_info_res)):
             iotlabwscli.parser.main([])
             list_nodes.assert_called_with(self.api, 123, None, None)
-            start.assert_called_with(self.api.url, self._nodes[0],
+            start.assert_called_with(self.api.url, self._nodes,
                                      123, 'username', 'token')
 
-    @patch('iotlabwscli.client.start')
-    @patch('iotlabcli.parser.common.list_nodes')
-    @patch('tornado.httpclient.HTTPClient.fetch')
     def test_main_start_no_node(self, fetch, list_nodes, start):
         """Run the parser.main."""
 
@@ -92,9 +86,6 @@ class TestParser(MainMock):
             list_nodes.assert_called_with(self.api, 123, None, None)
             assert start.call_count == 0
 
-    @patch('iotlabwscli.client.start')
-    @patch('iotlabcli.parser.common.list_nodes')
-    @patch('tornado.httpclient.HTTPClient.fetch')
     def test_main_fetch_failed(self, fetch, list_nodes, start):
         # pylint:disable=no-self-use
         """Run the parser.main."""

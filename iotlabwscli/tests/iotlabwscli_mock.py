@@ -53,6 +53,7 @@ def api_mock(ret=None):
     patch('requests.request', return_value=ret_val).start()
     api_class = patch('iotlabcli.rest.Api').start()
     api_class.return_value = Mock(wraps=Api('user', 'password'))
+    api_class.return_value.url = "https://localhost/test"
     return api_class.return_value
 
 

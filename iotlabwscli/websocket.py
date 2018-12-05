@@ -24,27 +24,40 @@ from __future__ import print_function
 
 import sys
 
+from collections import OrderedDict, namedtuple
+
+try:
+    from urllib.parse import urlparse
+except ImportError:  # Python 2
+    from urlparse import urlparse
+
 import tornado
 from tornado import gen
 from tornado.websocket import websocket_connect
 from tornado.httpclient import HTTPClientError
 
 
+Connection = namedtuple('Connection',
+                        ['host', 'site', 'exp_id', 'user',
+                         'node', 'token', 'con_type'])
+
+
 class WebsocketClient:
     # pylint:disable=too-few-public-methods
     """Class that connects to a websocket server while listening to stdin."""
 
-    def __init__(self, url, user, token):
-        self.url = url
-        self.token = token
-        self.user = user
+    def __init__(self, connection):
+        self.connection = connection
         self.websocket = None
+        self.url = ("wss://{0.host}:443/ws/{0.site}/{0.exp_id}/"
+                    "{0.node}/{0.con_type}".format(connection))
 
     @gen.coroutine
     def _connect(self):
         try:
             self.websocket = yield websocket_connect(
-                self.url, subprotocols=[self.user, 'token', self.token])
+                self.url, subprotocols=[self.connection.user,
+                                        'token', self.connection.token])
         except HTTPClientError as exc:
             print("Websocket connection failed: %s", exc)
             tornado.ioloop.IOLoop.instance().stop()
@@ -89,3 +102,52 @@ class WebsocketClient:
         yield self._listen_stdin()
         # Start websocket listener
         yield self._listen_websocket()
+
+
+def _group_nodes(nodes):
+    """Returns a dict with sites as keys and list of nodes as values.
+
+    >>> _group_nodes(['m3-1.saclay.iot-lab.info'])
+    OrderedDict([('saclay', ['m3-1'])])
+    >>> _group_nodes(['nrf52dk-7.saclay'])
+    OrderedDict([('saclay', ['nrf52dk-7'])])
+    >>> _group_nodes(['m3-1.saclay.iot-lab.info', 'nrf52dk-7.saclay'])
+    OrderedDict([('saclay', ['m3-1', 'nrf52dk-7'])])
+    >>> _group_nodes(['m3-1.saclay', 'm3-1.grenoble'])
+    OrderedDict([('grenoble', ['m3-1']), ('saclay', ['m3-1'])])
+    >>> _group_nodes(['m3-1.saclay', 'm3-1'])
+    OrderedDict([('saclay', ['m3-1'])])
+    >>> _group_nodes(['invalid'])
+    OrderedDict()
+    """
+    nodes_grouped = dict()
+    for node in nodes:
+        node_split = node.split('.')
+        if len(node_split) < 2:
+            continue
+        node_name, site = node_split[:2]
+        if site not in nodes_grouped:
+            nodes_grouped.update({site: [node_name]})
+        else:
+            nodes_grouped[site].append(node_name)
+
+    return OrderedDict(sorted(nodes_grouped.items(), key=lambda t: t[0]))
+
+
+def start(url, nodes, exp_id, user, token, con_type="serial"):
+    """Start a websocket session on nodes."""
+    try:
+        web_host = urlparse(url).netloc
+        _nodes_grouped = _group_nodes(nodes)
+
+        connection = Connection(web_host, site, exp_id, user,
+                                node, token, con_type)
+
+        ws_client = WebsocketClient(connection)
+        ws_client.run()
+        tornado.ioloop.IOLoop.instance().start()
+    except KeyboardInterrupt:
+        print("Exiting")
+    finally:
+        tornado.ioloop.IOLoop.instance().stop()
+    return 0

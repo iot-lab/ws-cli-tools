@@ -40,7 +40,8 @@ from iotlabcli import rest
 from iotlabcli.parser import common
 from iotlabcli.parser.common import _get_experiment_nodes_list
 
-import iotlabwscli.client
+import iotlabwscli
+from iotlabwscli.websocket import start
 
 
 def parse_options():
@@ -93,7 +94,7 @@ def parse_and_run(opts):
     if not nodes:
         return 1
 
-    return iotlabwscli.client.start(api.url, nodes[0], exp_id, user, token)
+    return start(api.url, nodes, exp_id, user, token)
 
 
 def main(args=None):
