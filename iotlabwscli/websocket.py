@@ -31,6 +31,8 @@ from tornado import gen
 from tornado.websocket import websocket_connect
 from tornado.httpclient import HTTPClientError
 
+from iotlabcli.parser import common as common_parser
+
 
 Session = namedtuple('Session', ['host', 'exp_id', 'user', 'token'])
 Connection = namedtuple('Connection', ['session', 'site', 'node'])
@@ -95,36 +97,103 @@ class WebsocketsSerialAggregator:  # pylint:disable=too-few-public-methods
     """Class that aggregates all websocket connections to stdin/out."""
 
     def __init__(self, connections):
-        self.clients = [WebsocketClient(connection, con_type='serial')
-                        for connection in connections]
+        self.clients = {
+            '{0.node}.{0.site}'.format(connection): WebsocketClient(
+                connection, con_type='serial') for connection in connections
+        }
+
+    @staticmethod
+    def _send_client(client, message):
+        if client.websocket is None:
+            # don't send to a disconnected client
+            return
+        client.websocket.write_message(message + '\n')
+
+    def _send_all_clients(self, message):
+        for client in self.clients.values():
+            self._send_client(client, message)
+
+    def _send_clients(self, nodes, message):
+        if nodes is None:
+            self._send_all_clients(message)
+        else:
+            for node in nodes:
+                node_str = '.'.join(node.split('.')[:2])
+                if node_str in self.clients:
+                    self._send_client(self.clients[node_str], message)
 
     def _listen_stdin(self):
         def _handle_stdin(file_descriptor, handler):
             # pylint:disable=unused-argument
             message = file_descriptor.readline().strip()
             try:
-                for client in self.clients:
-                    if client.websocket is None:
-                        # don't send to disconnected clients
-                        continue
-                    client.websocket.write_message(message.decode() + '\n')
+                nodes, message = self.extract_nodes_and_message(
+                    message.decode())
+                if (None, '') != (nodes, message):  # skip empty message
+                    self._send_clients(nodes, message)
             except UnicodeDecodeError:
                 pass
         ioloop = tornado.ioloop.IOLoop.current()
         ioloop.add_handler(sys.stdin, _handle_stdin,
                            tornado.ioloop.IOLoop.READ)
 
+    @staticmethod
+    def extract_nodes_and_message(line):
+        """
+        >>> WebsocketsSerialAggregator.extract_nodes_and_message('')
+        (None, '')
+
+        >>> WebsocketsSerialAggregator.extract_nodes_and_message(' ')
+        (None, ' ')
+
+        >>> WebsocketsSerialAggregator.extract_nodes_and_message('message')
+        (None, 'message')
+
+        >>> WebsocketsSerialAggregator.extract_nodes_and_message('-;message')
+        (None, 'message')
+
+        >>> WebsocketsSerialAggregator.extract_nodes_and_message(
+        ...     'my_message_csv;msg')
+        (None, 'my_message_csv;msg')
+
+        >>> WebsocketsSerialAggregator.extract_nodes_and_message(
+        ...      'saclay,M3,1;message')
+        (['m3-1.saclay.iot-lab.info'], 'message')
+
+        >>> WebsocketsSerialAggregator.extract_nodes_and_message(
+        ...     'saclay,m3,1-3+5;message')
+        ... # doctest: +NORMALIZE_WHITESPACE
+        (['m3-1.saclay.iot-lab.info', 'm3-2.saclay.iot-lab.info', \
+          'm3-3.saclay.iot-lab.info', 'm3-5.saclay.iot-lab.info'], 'message')
+        """
+        try:
+            nodes_str, message = line.split(';')
+            if nodes_str == '-':
+                return None, message
+
+            site, archi, list_str = nodes_str.split(',')
+
+            # normalize archi
+            archi = archi.lower()
+
+            # get nodes list
+            nodes = common_parser.nodes_list_from_info(site, archi, list_str)
+
+            return nodes, message
+        except (IndexError, ValueError):
+            return None, line
+
     @gen.coroutine
     def run(self):
         """Starts the clients serial aggregation workflow."""
         # Connect all clients
-        yield gen.multi([client.connect() for client in self.clients])
+        yield gen.multi([client.connect() for client in self.clients.values()])
 
         # Start stdin listener
         self._listen_stdin()
 
         # Start listening all opened client connections
-        yield gen.multi([client.listen() for client in self.clients
+        yield gen.multi([client.listen() for client in self.clients.values()
                          if client.websocket is not None])
 
         tornado.ioloop.IOLoop.instance().stop()
