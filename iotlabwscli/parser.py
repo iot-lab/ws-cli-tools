@@ -21,7 +21,6 @@
 # knowledge of the CeCILL license and that you accept its terms.
 
 
-import os
 import sys
 import argparse
 import json
@@ -41,7 +40,7 @@ from iotlabcli.parser import common
 from iotlabcli.parser.common import _get_experiment_nodes_list
 
 import iotlabwscli
-from iotlabwscli.websocket import start
+from iotlabwscli.websocket import start, Session
 
 
 def parse_options():
@@ -94,7 +93,7 @@ def parse_and_run(opts):
     if not nodes:
         return 1
 
-    return start(api.url, nodes, exp_id, user, token)
+    return start(Session(host, exp_id, user, token), nodes)
 
 
 def main(args=None):

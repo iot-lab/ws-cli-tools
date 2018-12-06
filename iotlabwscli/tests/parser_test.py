@@ -25,7 +25,10 @@ import json
 from mock import Mock, patch
 
 import tornado.httpclient
+
 import iotlabwscli.parser
+from iotlabwscli.parser import urlparse
+from iotlabwscli.websocket import Session
 
 from .iotlabwscli_mock import MainMock, ResponseBuffer
 
@@ -51,8 +54,9 @@ class TestParser(MainMock):
         list_nodes.return_value = [self._nodes[0]]
         iotlabwscli.parser.main(args)
         list_nodes.assert_called_with(self.api, 123, [[self._nodes[0]]], None)
-        start.assert_called_with(self.api.url, [self._nodes[0]], 123,
-                                 'username', 'token')
+        expected_session = Session(urlparse(self.api.url).netloc, 123,
+                                   'username', 'token')
+        start.assert_called_with(expected_session, [self._nodes[0]])
 
     def test_main_start_empty(self, fetch, list_nodes, start):
         """Run the parser.main."""
@@ -68,8 +72,9 @@ class TestParser(MainMock):
                           Mock(return_value=exp_info_res)):
             iotlabwscli.parser.main([])
             list_nodes.assert_called_with(self.api, 123, None, None)
-            start.assert_called_with(self.api.url, self._nodes,
-                                     123, 'username', 'token')
+            expected_session = Session(urlparse(self.api.url).netloc, 123,
+                                       'username', 'token')
+            start.assert_called_with(expected_session, self._nodes)
 
     def test_main_start_no_node(self, fetch, list_nodes, start):
         """Run the parser.main."""

@@ -26,66 +26,88 @@ import sys
 
 from collections import OrderedDict, namedtuple
 
-try:
-    from urllib.parse import urlparse
-except ImportError:  # Python 2
-    from urlparse import urlparse
-
 import tornado
 from tornado import gen
 from tornado.websocket import websocket_connect
 from tornado.httpclient import HTTPClientError
 
 
-Connection = namedtuple('Connection',
-                        ['host', 'site', 'exp_id', 'user',
-                         'node', 'token', 'con_type'])
+Session = namedtuple('Session', ['host', 'exp_id', 'user', 'token'])
+Connection = namedtuple('Connection', ['session', 'site', 'node'])
 
 
 class WebsocketClient:
     # pylint:disable=too-few-public-methods
     """Class that connects to a websocket server while listening to stdin."""
 
-    def __init__(self, connection):
+    def __init__(self, connection, con_type):
         self.connection = connection
         self.websocket = None
-        self.url = ("wss://{0.host}:443/ws/{0.site}/{0.exp_id}/"
-                    "{0.node}/{0.con_type}".format(connection))
+        self.url = ("wss://{0.session.host}:443/ws/"
+                    "{0.site}/{0.session.exp_id}/{0.node}/{1}"
+                    .format(connection, con_type))
 
     @gen.coroutine
-    def _connect(self):
+    def connect(self):
+        """Initiate a websocket connection of the client."""
         try:
             self.websocket = yield websocket_connect(
-                self.url, subprotocols=[self.connection.user,
-                                        'token', self.connection.token])
+                self.url, subprotocols=[self.connection.session.user,
+                                        'token',
+                                        self.connection.session.token])
         except HTTPClientError as exc:
-            print("Websocket connection failed: %s", exc)
-            tornado.ioloop.IOLoop.instance().stop()
+            print("Connection to {0.node}.{0.site} failed: {1}"
+                  .format(self.connection, exc))
+            # tornado.ioloop.IOLoop.instance().stop()
+            self.websocket = None
             return
-        print("Websocket connection opened")
+        print("Connected to {0.node}.{0.site}"
+              .format(self.connection))
 
     @gen.coroutine
-    def _listen_websocket(self):
+    def listen(self):
+        """Listen to all incoming data from websocket connection."""
+        data = ''
         while True:
-            data = yield self.websocket.read_message()
-            if data is None:
-                print("Websocket connection closed:",
-                      self.websocket.close_reason)
+            recv = yield self.websocket.read_message()
+            if recv is None:
+                print("Disconnected from {0.node}.{0.site}"
+                      .format(self.connection))
                 # Let some time to the loop to catch any pending exception
                 yield gen.sleep(0.1)
-                tornado.ioloop.IOLoop.instance().stop()
                 return
-            # Print received data to stdout
-            sys.stdout.write(data)
-            sys.stdout.flush()
+            data += recv
+            lines = data.splitlines(True)
+            data = ''
+            for line in lines:
+                if line[-1] == '\n':
+                    line = line[:-1].decode()
+                    sys.stdout.write('{0.node}.{0.site}: '
+                                     .format(self.connection))
+                    sys.stdout.write(line)
+                    sys.stdout.write('\n')
+                    sys.stdout.flush()
+                else:
+                    data = line  # last incomplete line
 
-    @gen.coroutine
+
+class WebsocketsSerialAggregator:  # pylint:disable=too-few-public-methods
+    """Class that aggregates all websocket connections to stdin/out."""
+
+    def __init__(self, connections):
+        self.clients = [WebsocketClient(connection, con_type='serial')
+                        for connection in connections]
+
     def _listen_stdin(self):
         def _handle_stdin(file_descriptor, handler):
             # pylint:disable=unused-argument
             message = file_descriptor.readline().strip()
             try:
-                self.websocket.write_message(message.decode() + '\n')
+                for client in self.clients:
+                    if client.websocket is None:
+                        # don't send to disconnected clients
+                        continue
+                    client.websocket.write_message(message.decode() + '\n')
             except UnicodeDecodeError:
                 pass
         ioloop = tornado.ioloop.IOLoop.current()
@@ -94,14 +116,18 @@ class WebsocketClient:
 
     @gen.coroutine
     def run(self):
-        """Connect and listen to the websocket server and listen to stdin."""
-        # Wait for connection
-        yield self._connect()
+        """Starts the clients serial aggregation workflow."""
+        # Connect all clients
+        yield gen.multi([client.connect() for client in self.clients])
 
-        # Start stdin listener as background task
-        yield self._listen_stdin()
-        # Start websocket listener
-        yield self._listen_websocket()
+        # Start stdin listener
+        self._listen_stdin()
+
+        # Start listening all opened client connections
+        yield gen.multi([client.listen() for client in self.clients
+                         if client.websocket is not None])
+
+        tornado.ioloop.IOLoop.instance().stop()
 
 
 def _group_nodes(nodes):
@@ -134,17 +160,16 @@ def _group_nodes(nodes):
     return OrderedDict(sorted(nodes_grouped.items(), key=lambda t: t[0]))
 
 
-def start(url, nodes, exp_id, user, token, con_type="serial"):
+def start(session, nodes):
     """Start a websocket session on nodes."""
     try:
-        web_host = urlparse(url).netloc
         _nodes_grouped = _group_nodes(nodes)
+        connections = [Connection(session, site, node)
+                       for site, _nodes in _nodes_grouped.items()
+                       for node in _nodes]
 
-        connection = Connection(web_host, site, exp_id, user,
-                                node, token, con_type)
-
-        ws_client = WebsocketClient(connection)
-        ws_client.run()
+        aggregator = WebsocketsSerialAggregator(connections)
+        aggregator.run()
         tornado.ioloop.IOLoop.instance().start()
     except KeyboardInterrupt:
         print("Exiting")
