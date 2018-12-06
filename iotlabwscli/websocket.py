@@ -60,7 +60,6 @@ class WebsocketClient:
         except HTTPClientError as exc:
             print("Connection to {0.node}.{0.site} failed: {1}"
                   .format(self.connection, exc))
-            # tornado.ioloop.IOLoop.instance().stop()
             self.websocket = None
             return
         print("Connected to {0.node}.{0.site}"
@@ -73,8 +72,8 @@ class WebsocketClient:
         while True:
             recv = yield self.websocket.read_message()
             if recv is None:
-                print("Disconnected from {0.node}.{0.site}"
-                      .format(self.connection))
+                print("Disconnected from {0.node}.{0.site}: {1}"
+                      .format(self.connection, self.websocket.close_reason))
                 # Let some time to the loop to catch any pending exception
                 yield gen.sleep(0.1)
                 self.websocket = None
