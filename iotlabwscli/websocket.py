@@ -77,6 +77,7 @@ class WebsocketClient:
                       .format(self.connection))
                 # Let some time to the loop to catch any pending exception
                 yield gen.sleep(0.1)
+                self.websocket = None
                 return
             data += recv
             lines = data.splitlines(True)
