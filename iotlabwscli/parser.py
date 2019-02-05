@@ -24,6 +24,7 @@
 import sys
 import argparse
 import json
+from collections import defaultdict
 
 try:
     from urllib.parse import urlparse
@@ -43,6 +44,9 @@ import iotlabwscli
 from iotlabwscli.websocket import start, Session
 
 
+WS_MAX_CONNECTIONS = 10
+
+
 def parse_options():
     """Parse command line option."""
     parser = argparse.ArgumentParser()
@@ -56,6 +60,23 @@ def parse_options():
     parser.add_argument('--verbose', action='store_true',
                         help='Set verbose output')
     return parser
+
+
+def _check_nodes_list(nodes_list):
+    node_dict = defaultdict(list)
+
+    for node in nodes_list:
+        _node, _site = node.split('.')[:2]
+        node_dict[_site].append(_node)
+
+    ret = 0
+    for site, nodes in node_dict.items():
+        if len(nodes) > WS_MAX_CONNECTIONS:
+            print("Too much nodes requested ({}) for site {}, {} are "
+                  "allowed at maximum for each site.".format(
+                      len(nodes), site, WS_MAX_CONNECTIONS))
+            ret += 1
+    return ret
 
 
 def parse_and_run(opts):
@@ -91,6 +112,9 @@ def parse_and_run(opts):
     nodes = ["{}".format(node) for node in nodes if not node.startswith('a8')]
 
     if not nodes:
+        return 1
+
+    if _check_nodes_list(nodes) > 0:
         return 1
 
     return start(Session(host, exp_id, user, token), nodes)
