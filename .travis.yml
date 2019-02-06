@@ -1,0 +1,21 @@
+language: python
+
+matrix:
+    include:
+        - python: 2.7
+          env: TOXENV="py27-tests,py27-lint,cli,coverage"
+        - python: 3.5
+          env: TOXENV="²py35-tests,cli"
+        - python: 3.6
+          env: TOXENV="copying,py36-tests,py36-lint,cli,coverage"
+        - python: 3.7
+          env: TOXENV="py37-tests,cli"
+
+before_install:
+    - pip install tox
+
+install:
+    - pip install .
+
+script:
+    - tox
