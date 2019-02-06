@@ -100,7 +100,7 @@ def parse_and_run(opts):
         print("Failed to fetch token from API: {}".format(exc))
         return 1
 
-    token = json.loads(token_response)['token']
+    token = json.loads(token_response.decode())['token']
     nodes = common.list_nodes(api, exp_id, opts.nodes_list,
                               opts.exclude_nodes_list)
 
