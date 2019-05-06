@@ -78,7 +78,10 @@ class WebsocketClient:
                 yield gen.sleep(0.1)
                 self.websocket = None
                 return
-            data += recv
+            try:
+                data += recv.decode('utf-8')
+            except UnicodeDecodeError:
+                continue
             lines = data.splitlines(True)
             data = ''
             for line in lines:
@@ -99,7 +102,8 @@ class WebsocketsSerialAggregator:  # pylint:disable=too-few-public-methods
     def __init__(self, connections):
         self.clients = {
             '{0.node}.{0.site}'.format(connection): WebsocketClient(
-                connection, con_type='serial') for connection in connections
+                connection, con_type='serial/raw')
+            for connection in connections
         }
 
     @staticmethod
@@ -107,7 +111,8 @@ class WebsocketsSerialAggregator:  # pylint:disable=too-few-public-methods
         if client.websocket is None:
             # don't send to a disconnected client
             return
-        client.websocket.write_message(message + '\n')
+        msg = message + '\n'
+        client.websocket.write_message(msg.encode(), binary=True)
 
     def _send_all_clients(self, message):
         for client in self.clients.values():
