@@ -83,7 +83,7 @@ class WebsocketClient:
             data = ''
             for line in lines:
                 if line[-1] == '\n':
-                    line = line[:-1].decode()
+                    line = line[:-1]
                     sys.stdout.write('{0.node}.{0.site}: '
                                      .format(self.connection))
                     sys.stdout.write(line)
@@ -127,8 +127,7 @@ class WebsocketsSerialAggregator:  # pylint:disable=too-few-public-methods
             # pylint:disable=unused-argument
             message = file_descriptor.readline().strip()
             try:
-                nodes, message = self.extract_nodes_and_message(
-                    message.decode())
+                nodes, message = self.extract_nodes_and_message(message)
                 if (None, '') != (nodes, message):  # skip empty message
                     self._send_clients(nodes, message)
             except UnicodeDecodeError:
