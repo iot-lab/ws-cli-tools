@@ -1,7 +1,7 @@
 Websocket CLI Tools
 ===================
 
-|PyPI| |Travis| |Codecov|
+|PyPI| |CI| |Codecov|
 
 **Websocket CLI Tools** provides a set of commands for interacting remotely and
 easily with IoT-Lab nodes using the Websosket protocol.
@@ -65,9 +65,9 @@ Start an experiment, wait for it to be ready and connect to the serial port:
    :target: https://badge.fury.io/py/iotlabwscli
    :alt: PyPI package status
 
-.. |Travis| image:: https://travis-ci.org/iot-lab/ws-cli-tools.svg?branch=master
-   :target: https://travis-ci.org/iot-lab/ws-cli-tools
-   :alt: Travis build status
+   .. |CI| image:: https://github.com/iot-lab/ws-cli-tools/workflows/CI/badge.svg
+   :target: https://github.com/iot-lab/ws-cli-tools/actions?query=workflow%3ACI+branch%3Amaster
+   :alt: CI status
 
 .. |Codecov| image:: https://codecov.io/gh/iot-lab/ws-cli-tools/branch/master/graph/badge.svg
    :target: https://codecov.io/gh/iot-lab/ws-cli-tools/branch/master
