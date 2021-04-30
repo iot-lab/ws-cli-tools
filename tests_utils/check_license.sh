@@ -17,6 +17,7 @@ files_list=$(echo "${files_list}" | grep -v \
     -e 'COPYING' \
     -e 'ssh_config' \
     -e '.travis.yml' \
+    -e '.github/workflows/continuous-integration.yml' \
     -e 'codecov.yml' \
 )
 
