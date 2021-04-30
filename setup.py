@@ -20,6 +20,8 @@
 # The fact that you are presently reading this means that you have had
 # knowledge of the CeCILL license and that you accept its terms.
 
+"""WS-CLI-Tools setuptools script."""
+
 import os
 from setuptools import setup, find_packages
 
@@ -42,10 +44,13 @@ def get_version(package):
 
     Inspired from pep8 setup.py
     """
+    version = '-1'
     with open(os.path.join(package, '__init__.py')) as init_fd:
         for line in init_fd:
             if line.startswith('__version__'):
-                return eval(line.split('=')[-1])  # pylint:disable=eval-used
+                version = eval(line.split('=')[-1])  # pylint:disable=eval-used
+                break
+    return version
 
 
 setup(
@@ -68,12 +73,7 @@ setup(
     },
     classifiers=['Development Status :: 4 - Beta',
                  'Programming Language :: Python',
-                 'Programming Language :: Python :: 2.7',
                  'Programming Language :: Python :: 3',
-                 'Programming Language :: Python :: 3.4',
-                 'Programming Language :: Python :: 3.5',
-                 'Programming Language :: Python :: 3.6',
-                 'Programming Language :: Python :: 3.7',
                  'Intended Audience :: End Users/Desktop',
                  'Environment :: Console',
                  'Topic :: Utilities', ],
