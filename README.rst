@@ -65,7 +65,7 @@ Start an experiment, wait for it to be ready and connect to the serial port:
    :target: https://badge.fury.io/py/iotlabwscli
    :alt: PyPI package status
 
-   .. |CI| image:: https://github.com/iot-lab/ws-cli-tools/workflows/CI/badge.svg
+.. |CI| image:: https://github.com/iot-lab/ws-cli-tools/workflows/CI/badge.svg
    :target: https://github.com/iot-lab/ws-cli-tools/actions?query=workflow%3ACI+branch%3Amaster
    :alt: CI status
 
