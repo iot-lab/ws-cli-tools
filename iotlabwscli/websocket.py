@@ -45,9 +45,10 @@ class WebsocketClient:
     def __init__(self, connection, con_type):
         self.connection = connection
         self.websocket = None
-        self.url = ("wss://{0.session.host}:443/ws/"
-                    "{0.site}/{0.session.exp_id}/{0.node}/{1}"
-                    .format(connection, con_type))
+        self.url = (
+            f"wss://{connection.session.host}:443/ws/{connection.site}/"
+            f"{connection.session.exp_id}/{connection.node}/{con_type}"
+        )
 
     @gen.coroutine
     def connect(self):
@@ -58,12 +59,13 @@ class WebsocketClient:
                                         'token',
                                         self.connection.session.token])
         except HTTPClientError as exc:
-            print("Connection to {0.node}.{0.site} failed: {1}"
-                  .format(self.connection, exc))
+            print(
+                f"Connection to {self.connection.node}.{self.connection.site} "
+                f"failed: {exc}"
+            )
             self.websocket = None
             return
-        print("Connected to {0.node}.{0.site}"
-              .format(self.connection))
+        print(f"Connected to {self.connection.node}.{self.connection.site}")
 
     @gen.coroutine
     def listen(self):
@@ -72,8 +74,10 @@ class WebsocketClient:
         while True:
             recv = yield self.websocket.read_message()
             if recv is None:
-                print("Disconnected from {0.node}.{0.site}: {1}"
-                      .format(self.connection, self.websocket.close_reason))
+                print(
+                    f"Disconnected from {self.connection.node}."
+                    f"{self.connection.site}: {self.websocket.close_reason}"
+                )
                 # Let some time to the loop to catch any pending exception
                 yield gen.sleep(0.1)
                 self.websocket = None
@@ -87,10 +91,10 @@ class WebsocketClient:
             for line in lines:
                 if line[-1] == '\n':
                     line = line[:-1]
-                    sys.stdout.write('{0.node}.{0.site}: '
-                                     .format(self.connection))
-                    sys.stdout.write(line)
-                    sys.stdout.write('\n')
+                    sys.stdout.write(
+                        f"{self.connection.node}.{self.connection.site}: "
+                        f"{line}\n"
+                    )
                     sys.stdout.flush()
                 else:
                     data = line  # last incomplete line
@@ -101,8 +105,8 @@ class WebsocketsSerialAggregator:  # pylint:disable=too-few-public-methods
 
     def __init__(self, connections):
         self.clients = {
-            '{0.node}.{0.site}'.format(connection): WebsocketClient(
-                connection, con_type='serial/raw')
+            f"{connection.node}.{connection.site}":
+            WebsocketClient(connection, con_type='serial/raw')
             for connection in connections
         }
 
@@ -219,7 +223,7 @@ def _group_nodes(nodes):
     >>> _group_nodes(['invalid'])
     OrderedDict()
     """
-    nodes_grouped = dict()
+    nodes_grouped = {}
     for node in nodes:
         node_split = node.split('.')
         if len(node_split) < 2:

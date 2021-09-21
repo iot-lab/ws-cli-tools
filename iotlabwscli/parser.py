@@ -72,9 +72,10 @@ def _check_nodes_list(nodes_list):
     ret = 0
     for site, nodes in node_dict.items():
         if len(nodes) > WS_MAX_CONNECTIONS:
-            print("Too much nodes requested ({}) for site {}, {} are "
-                  "allowed at maximum for each site.".format(
-                      len(nodes), site, WS_MAX_CONNECTIONS))
+            print(
+                f"Too much nodes requested ({len(nodes)}) for site {site}, "
+                f"{WS_MAX_CONNECTIONS} are allowed at maximum for each site."
+            )
             ret += 1
     return ret
 
@@ -87,7 +88,7 @@ def parse_and_run(opts):
 
     # Fetch token from new API
     host = urlparse(api.url).netloc
-    api_url = 'https://{}/api/experiments/{}/token'.format(host, exp_id)
+    api_url = f"https://{host}/api/experiments/{exp_id}/token"
     request_kwargs = {'auth_username': user, 'auth_password': passwd}
     request = tornado.httpclient.HTTPRequest(api_url, **request_kwargs)
     request.headers["Content-Type"] = "application/json"
@@ -97,7 +98,7 @@ def parse_and_run(opts):
         token_response = client.fetch(request).buffer.read()
     except tornado.httpclient.HTTPClientError as exc:
         # pylint:disable=superfluous-parens
-        print("Failed to fetch token from API: {}".format(exc))
+        print(f"Failed to fetch token from API: {exc}")
         return 1
 
     token = json.loads(token_response.decode())['token']
@@ -109,7 +110,7 @@ def parse_and_run(opts):
         nodes = _get_experiment_nodes_list(api, exp_id)
 
     # Drop A8 nodes
-    nodes = ["{}".format(node) for node in nodes if not node.startswith('a8')]
+    nodes = [node for node in nodes if not node.startswith('a8')]
 
     if not nodes:
         return 1
