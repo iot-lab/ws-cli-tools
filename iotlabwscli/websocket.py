@@ -20,76 +20,88 @@
 # The fact that you are presently reading this means that you have had
 # knowledge of the CeCILL license and that you accept its terms.
 
-from __future__ import print_function
-
+import asyncio
 import sys
+from collections import OrderedDict
+from typing import Any, NamedTuple
 
-from collections import OrderedDict, namedtuple
-
-import tornado
-from tornado import gen
-from tornado.websocket import websocket_connect
-from tornado.httpclient import HTTPClientError
-
+import websockets
+import websockets.exceptions
 from iotlabcli.parser import common as common_parser
 
 
-Session = namedtuple('Session', ['host', 'exp_id', 'user', 'token'])
-Connection = namedtuple('Connection', ['session', 'site', 'node'])
+class Session(NamedTuple):
+    """Websocket session credentials."""
+
+    host: str
+    exp_id: int
+    user: str
+    token: str
+
+
+class Connection(NamedTuple):
+    """Node connection parameters."""
+
+    session: Session
+    site: str
+    node: str
 
 
 class WebsocketClient:
     # pylint:disable=too-few-public-methods
     """Class that connects to a websocket server while listening to stdin."""
 
-    def __init__(self, connection, con_type):
+    def __init__(self, connection: Connection, con_type: str) -> None:
         self.connection = connection
-        self.websocket = None
+        self.websocket: Any = None
         self.url = (
             f"wss://{connection.session.host}:443/ws/{connection.site}/"
             f"{connection.session.exp_id}/{connection.node}/{con_type}"
         )
 
-    @gen.coroutine
-    def connect(self):
-        """Initiate a websocket connection of the client."""
+    async def run(self) -> None:
+        """Connect to websocket and listen for incoming messages."""
+        node_site = f"{self.connection.node}.{self.connection.site}"
         try:
-            self.websocket = yield websocket_connect(
-                self.url, subprotocols=[self.connection.session.user,
-                                        'token',
-                                        self.connection.session.token])
-        except HTTPClientError as exc:
-            print(
-                f"Connection to {self.connection.node}.{self.connection.site} "
-                f"failed: {exc}"
-            )
+            async with websockets.connect(
+                self.url,
+                subprotocols=[
+                    self.connection.session.user,
+                    "token",
+                    self.connection.session.token,
+                ],
+            ) as self.websocket:
+                print(f"Connected to {node_site}")
+                await self._listen()
+        except (websockets.exceptions.WebSocketException, OSError) as exc:
+            print(f"Connection to {node_site} failed: {exc}")
+        finally:
             self.websocket = None
-            return
-        print(f"Connected to {self.connection.node}.{self.connection.site}")
 
-    @gen.coroutine
-    def listen(self):
+    async def _listen(self) -> None:
         """Listen to all incoming data from websocket connection."""
-        data = ''
+        data = ""
         while True:
-            recv = yield self.websocket.read_message()
-            if recv is None:
+            try:
+                recv = await self.websocket.recv()
+            except websockets.exceptions.ConnectionClosed as exc:
                 print(
                     f"Disconnected from {self.connection.node}."
-                    f"{self.connection.site}: {self.websocket.close_reason}"
+                    f"{self.connection.site}: {exc}"
                 )
-                # Let some time to the loop to catch any pending exception
-                yield gen.sleep(0.1)
-                self.websocket = None
+                await asyncio.sleep(0.1)
                 return
-            try:
-                data += recv.decode('utf-8')
-            except UnicodeDecodeError:
-                continue
+            if isinstance(recv, bytes):
+                try:
+                    data += recv.decode("utf-8")
+                except UnicodeDecodeError:
+                    continue
+            else:
+                data += recv
             lines = data.splitlines(True)
-            data = ''
+            data = ""
             for line in lines:
-                if line[-1] == '\n':
+                if line[-1] == "\n":
                     line = line[:-1]
                     sys.stdout.write(
                         f"{self.connection.node}.{self.connection.site}: "
@@ -103,50 +115,54 @@ class WebsocketClient:
 class WebsocketsSerialAggregator:  # pylint:disable=too-few-public-methods
     """Class that aggregates all websocket connections to stdin/out."""
 
-    def __init__(self, connections):
-        self.clients = {
-            f"{connection.node}.{connection.site}":
-            WebsocketClient(connection, con_type='serial/raw')
+    def __init__(self, connections: list[Connection]) -> None:
+        self.clients: dict[str, WebsocketClient] = {
+            f"{connection.node}.{connection.site}": WebsocketClient(
+                connection, con_type="serial/raw"
+            )
             for connection in connections
         }
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     @staticmethod
-    def _send_client(client, message):
+    async def _send_client(client: WebsocketClient, message: str) -> None:
         if client.websocket is None:
             # don't send to a disconnected client
             return
-        msg = message + '\n'
-        client.websocket.write_message(msg.encode(), binary=True)
+        msg = message + "\n"
+        await client.websocket.send(msg.encode())
 
-    def _send_all_clients(self, message):
-        for client in self.clients.values():
-            self._send_client(client, message)
+    async def _send_all_clients(self, message: str) -> None:
+        await asyncio.gather(
+            *[self._send_client(c, message) for c in self.clients.values()]
+        )
 
-    def _send_clients(self, nodes, message):
+    async def _send_clients(
+        self, nodes: list[str] | None, message: str
+    ) -> None:
         if nodes is None:
-            self._send_all_clients(message)
+            await self._send_all_clients(message)
         else:
             for node in nodes:
-                node_str = '.'.join(node.split('.')[:2])
+                node_str = ".".join(node.split(".")[:2])
                 if node_str in self.clients:
-                    self._send_client(self.clients[node_str], message)
+                    await self._send_client(self.clients[node_str], message)
 
-    def _listen_stdin(self):
-        def _handle_stdin(file_descriptor, handler):
-            # pylint:disable=unused-argument
-            message = file_descriptor.readline().strip()
-            try:
-                nodes, message = self.extract_nodes_and_message(message)
-                if (None, '') != (nodes, message):  # skip empty message
-                    self._send_clients(nodes, message)
-            except UnicodeDecodeError:
-                pass
-        ioloop = tornado.ioloop.IOLoop.current()
-        ioloop.add_handler(sys.stdin, _handle_stdin,
-                           tornado.ioloop.IOLoop.READ)
+    def _listen_stdin(self) -> None:
+        def _handle_stdin() -> None:
+            message = sys.stdin.readline().strip()
+            nodes, message = self.extract_nodes_and_message(message)
+            if (None, "") != (nodes, message):  # skip empty message
+                assert self._loop is not None
+                self._loop.create_task(self._send_clients(nodes, message))
+
+        assert self._loop is not None
+        self._loop.add_reader(sys.stdin.fileno(), _handle_stdin)
 
     @staticmethod
-    def extract_nodes_and_message(line):
+    def extract_nodes_and_message(
+        line: str,
+    ) -> tuple[list[str] | None, str]:
         """
         >>> WebsocketsSerialAggregator.extract_nodes_and_message('')
         (None, '')
@@ -175,11 +191,11 @@ class WebsocketsSerialAggregator:  # pylint:disable=too-few-public-methods
           'm3-3.saclay.iot-lab.info', 'm3-5.saclay.iot-lab.info'], 'message')
         """
         try:
-            nodes_str, message = line.split(';')
-            if nodes_str == '-':
+            nodes_str, message = line.split(";")
+            if nodes_str == "-":
                 return None, message
 
-            site, archi, list_str = nodes_str.split(',')
+            site, archi, list_str = nodes_str.split(",")
 
             # normalize archi
             archi = archi.lower()
@@ -191,41 +207,36 @@ class WebsocketsSerialAggregator:  # pylint:disable=too-few-public-methods
         except (IndexError, ValueError):
             return None, line
 
-    @gen.coroutine
-    def run(self):
+    async def run(self) -> None:
         """Starts the clients serial aggregation workflow."""
-        # Connect all clients
-        yield gen.multi([client.connect() for client in self.clients.values()])
-
-        # Start stdin listener
+        self._loop = asyncio.get_running_loop()
         self._listen_stdin()
-
-        # Start listening all opened client connections
-        yield gen.multi([client.listen() for client in self.clients.values()
-                         if client.websocket is not None])
-
-        tornado.ioloop.IOLoop.instance().stop()
+        await asyncio.gather(
+            *[client.run() for client in self.clients.values()]
+        )
+        self._loop.remove_reader(sys.stdin.fileno())
 
 
-def _group_nodes(nodes):
+def _group_nodes(nodes: list[str]) -> OrderedDict[str, list[str]]:
     """Returns a dict with sites as keys and list of nodes as values.
 
-    >>> _group_nodes(['m3-1.saclay.iot-lab.info'])
-    OrderedDict([('saclay', ['m3-1'])])
-    >>> _group_nodes(['nrf52dk-7.saclay'])
-    OrderedDict([('saclay', ['nrf52dk-7'])])
-    >>> _group_nodes(['m3-1.saclay.iot-lab.info', 'nrf52dk-7.saclay'])
-    OrderedDict([('saclay', ['m3-1', 'nrf52dk-7'])])
-    >>> _group_nodes(['m3-1.saclay', 'm3-1.grenoble'])
-    OrderedDict([('grenoble', ['m3-1']), ('saclay', ['m3-1'])])
-    >>> _group_nodes(['m3-1.saclay', 'm3-1'])
-    OrderedDict([('saclay', ['m3-1'])])
-    >>> _group_nodes(['invalid'])
-    OrderedDict()
+    >>> list(_group_nodes(['m3-1.saclay.iot-lab.info']).items())
+    [('saclay', ['m3-1'])]
+    >>> list(_group_nodes(['nrf52dk-7.saclay']).items())
+    [('saclay', ['nrf52dk-7'])]
+    >>> n = ['m3-1.saclay.iot-lab.info', 'nrf52dk-7.saclay']
+    >>> list(_group_nodes(n).items())
+    [('saclay', ['m3-1', 'nrf52dk-7'])]
+    >>> list(_group_nodes(['m3-1.saclay', 'm3-1.grenoble']).items())
+    [('grenoble', ['m3-1']), ('saclay', ['m3-1'])]
+    >>> list(_group_nodes(['m3-1.saclay', 'm3-1']).items())
+    [('saclay', ['m3-1'])]
+    >>> list(_group_nodes(['invalid']).items())
+    []
     """
-    nodes_grouped = {}
+    nodes_grouped: dict[str, list[str]] = {}
     for node in nodes:
-        node_split = node.split('.')
+        node_split = node.split(".")
         if len(node_split) < 2:
             continue
         node_name, site = node_split[:2]
@@ -237,19 +248,18 @@ def _group_nodes(nodes):
     return OrderedDict(sorted(nodes_grouped.items(), key=lambda t: t[0]))
 
 
-def start(session, nodes):
+def start(session: Session, nodes: list[str]) -> int:
     """Start a websocket session on nodes."""
     try:
         _nodes_grouped = _group_nodes(nodes)
-        connections = [Connection(session, site, node)
-                       for site, _nodes in _nodes_grouped.items()
-                       for node in _nodes]
+        connections = [
+            Connection(session, site, node)
+            for site, _nodes in _nodes_grouped.items()
+            for node in _nodes
+        ]
 
         aggregator = WebsocketsSerialAggregator(connections)
-        aggregator.run()
-        tornado.ioloop.IOLoop.instance().start()
+        asyncio.run(aggregator.run())
     except KeyboardInterrupt:
         print("Exiting")
-    finally:
-        tornado.ioloop.IOLoop.instance().stop()
     return 0

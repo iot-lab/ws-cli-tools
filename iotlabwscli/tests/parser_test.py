@@ -22,79 +22,99 @@
 """Tests for iotlabwscli.parser module."""
 
 import json
-from mock import Mock, patch
-
-import tornado.httpclient
+import urllib.error
+from unittest.mock import MagicMock, Mock, patch
 
 import iotlabwscli.parser
 from iotlabwscli.parser import urlparse
 from iotlabwscli.websocket import Session
 
-from .iotlabwscli_mock import MainMock, ResponseBuffer
+from .iotlabwscli_mock import MainMock
 
 # pylint: disable=too-many-public-methods
 # pylint: disable=too-few-public-methods
 
 
-@patch('iotlabwscli.parser.start')
-@patch('iotlabcli.parser.common.list_nodes')
-@patch('tornado.httpclient.HTTPClient.fetch')
+@patch("iotlabwscli.parser.start")
+@patch("iotlabcli.parser.common.list_nodes")
+@patch("urllib.request.urlopen")
 class TestParser(MainMock):
     """Test websocket cli main parser."""
 
-    _nodes = ['m3-1.saclay.iot-lab.info', 'm3-2.saclay.iot-lab.info']
+    _nodes = ["m3-1.saclay.iot-lab.info", "m3-2.saclay.iot-lab.info"]
 
-    def test_main_start(self, fetch, list_nodes, start):
+    def _mock_urlopen(self, urlopen, token="token"):
+        """Configure urlopen mock to return a valid token response."""
+        expected_json = json.dumps({"token": token})
+        ctx = MagicMock()
+        ctx.__enter__.return_value.read.return_value = expected_json.encode()
+        urlopen.return_value = ctx
+
+    def test_main_start(self, urlopen, list_nodes, start):
         """Run the parser.main."""
         start.return_value = 0
-        expected_json = json.dumps({"token": "token"})
-        fetch.return_value = ResponseBuffer(expected_json.encode())
+        self._mock_urlopen(urlopen)
 
-        args = ['-l', 'saclay,m3,1']
+        args = ["-l", "saclay,m3,1"]
         list_nodes.return_value = [self._nodes[0]]
         iotlabwscli.parser.main(args)
         list_nodes.assert_called_with(self.api, 123, [[self._nodes[0]]], None)
-        expected_session = Session(urlparse(self.api.url).netloc, 123,
-                                   'username', 'token')
+        expected_session = Session(
+            urlparse(self.api.url).netloc, 123, "username", "token"
+        )
         start.assert_called_with(expected_session, [self._nodes[0]])
 
-    def test_main_start_empty(self, fetch, list_nodes, start):
+    def test_main_start_empty(self, urlopen, list_nodes, start):
         """Run the parser.main."""
 
         start.return_value = 0
         list_nodes.return_value = []
-        expected_json = json.dumps({"token": "token"})
-        fetch.return_value = ResponseBuffer(expected_json.encode())
+        self._mock_urlopen(urlopen)
 
-        exp_info_res = {"items": [{"network_address": node}
-                                  for node in self._nodes]}
-        with patch.object(self.api, 'get_experiment_info',
-                          Mock(return_value=exp_info_res)):
+        exp_info_res = {
+            "items": [{"network_address": node} for node in self._nodes]
+        }
+        with patch.object(
+            self.api, "get_experiment_info", Mock(return_value=exp_info_res)
+        ):
             iotlabwscli.parser.main([])
             list_nodes.assert_called_with(self.api, 123, None, None)
-            expected_session = Session(urlparse(self.api.url).netloc, 123,
-                                       'username', 'token')
+            expected_session = Session(
+                urlparse(self.api.url).netloc, 123, "username", "token"
+            )
             start.assert_called_with(expected_session, self._nodes)
 
-    def test_main_start_no_node(self, fetch, list_nodes, start):
+    def test_main_start_no_node(self, urlopen, list_nodes, start):
         """Run the parser.main."""
 
         start.return_value = 0
         list_nodes.return_value = []
-        expected_json = json.dumps({"token": "token"})
-        fetch.return_value = ResponseBuffer(expected_json.encode())
+        self._mock_urlopen(urlopen)
         exp_info_res = {"items": []}
 
-        with patch.object(self.api, 'get_experiment_info',
-                          Mock(return_value=exp_info_res)):
+        with patch.object(
+            self.api, "get_experiment_info", Mock(return_value=exp_info_res)
+        ):
             iotlabwscli.parser.main([])
             list_nodes.assert_called_with(self.api, 123, None, None)
             assert start.call_count == 0
 
-    def test_main_fetch_failed(self, fetch, list_nodes, start):
+    def test_main_fetch_failed(self, urlopen, list_nodes, start):
         # pylint:disable=no-self-use
         """Run the parser.main."""
-        fetch.side_effect = tornado.httpclient.HTTPClientError(123)
+        urlopen.side_effect = urllib.error.HTTPError(
+            url="", code=403, msg="Forbidden", hdrs=None, fp=None
+        )
         iotlabwscli.parser.main([])
         assert list_nodes.call_count == 0
+        assert start.call_count == 0
+
+    def test_main_too_many_nodes(self, urlopen, list_nodes, start):
+        """Reject when a site has more nodes than WS_MAX_CONNECTIONS."""
+        self._mock_urlopen(urlopen)
+        # 11 nodes on the same site — exceeds WS_MAX_CONNECTIONS (10)
+        list_nodes.return_value = [
+            f"m3-{i}.saclay.iot-lab.info" for i in range(1, 12)
+        ]
+        iotlabwscli.parser.main([])
         assert start.call_count == 0

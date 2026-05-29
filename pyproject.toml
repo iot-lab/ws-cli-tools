@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "iotlabwscli"
+dynamic = ["version"]
+description = "IoT-LAB testbed websocket command-line client"
+readme = "README.rst"
+license = {text = "CeCILL v2.1"}
+authors = [{name = "IoT-LAB Team", email = "admin@iot-lab.info"}]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: End Users/Desktop",
+    "Environment :: Console",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "iotlabcli>=2.0",
+    "websockets>=10.0",
+]
+
+[project.urls]
+Homepage = "http://www.iot-lab.info"
+Download = "http://github.com/iot-lab/ws-cli-tools/"
+
+[project.scripts]
+iotlab-ws = "iotlabwscli.parser:main"
+
+[tool.hatch.version]
+path = "iotlabwscli/__init__.py"
+
+[tool.pytest.ini_options]
+addopts = "-vs --doctest-modules --cov iotlabwscli --cov-report term --cov-report term-missing --cov-report xml --cov-branch"
+testpaths = ["iotlabwscli"]
+
+[tool.pylint.main]
+reports = false
+
+[tool.pylint."messages control"]
+disable = ["locally-disabled", "star-args", "bad-option-value", "old-style-class", "unspecified-encoding"]
+
+[tool.pylint.format]
+msg-template = "{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}"
+
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["C901"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 6
+
+[tool.isort]
+profile = "black"
+line_length = 79

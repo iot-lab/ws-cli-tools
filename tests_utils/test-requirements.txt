@@ -1,6 +1,5 @@
 pytest
 pytest-cov
-mock
-pycodestyle
 pylint
-flake8
+ruff
+isort

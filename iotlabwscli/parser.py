@@ -20,53 +20,48 @@
 # The fact that you are presently reading this means that you have had
 # knowledge of the CeCILL license and that you accept its terms.
 
-
-import sys
 import argparse
+import base64
 import json
+import sys
+import urllib.error
+import urllib.request
 from collections import defaultdict
+from typing import Optional
+from urllib.parse import urlparse
 
-try:
-    from urllib.parse import urlparse
-except ImportError:  # Python 2
-    from urlparse import urlparse
-
-import tornado
-import tornado.httpclient
-
-from iotlabcli import auth
-from iotlabcli import helpers
-from iotlabcli import rest
+from iotlabcli import auth, helpers, rest
 from iotlabcli.parser import common
 from iotlabcli.parser.common import _get_experiment_nodes_list
 
 import iotlabwscli
-from iotlabwscli.websocket import start, Session
-
+from iotlabwscli.websocket import Session, start
 
 WS_MAX_CONNECTIONS = 10
 
 
-def parse_options():
+def parse_options() -> argparse.ArgumentParser:
     """Parse command line option."""
     parser = argparse.ArgumentParser()
     common.add_auth_arguments(parser, False)
     common.add_output_formatter(parser)
     # nodes list or exclude list
     common.add_nodes_selection_list(parser)
-    parser.add_argument('-v', '--version', action='version',
-                        version=iotlabwscli.__version__)
+    parser.add_argument(
+        "-v", "--version", action="version", version=iotlabwscli.__version__
+    )
     common.add_expid_arg(parser)
-    parser.add_argument('--verbose', action='store_true',
-                        help='Set verbose output')
+    parser.add_argument(
+        "--verbose", action="store_true", help="Set verbose output"
+    )
     return parser
 
 
-def _check_nodes_list(nodes_list):
+def _check_nodes_list(nodes_list: list[str]) -> int:
     node_dict = defaultdict(list)
 
     for node in nodes_list:
-        _node, _site = node.split('.')[:2]
+        _node, _site = node.split(".")[:2]
         node_dict[_site].append(_node)
 
     ret = 0
@@ -80,37 +75,43 @@ def _check_nodes_list(nodes_list):
     return ret
 
 
-def parse_and_run(opts):
+def parse_and_run(opts: argparse.Namespace) -> Optional[int]:
     """Parse namespace 'opts' object and execute M3 fw update action."""
     user, passwd = auth.get_user_credentials(opts.username, opts.password)
     api = rest.Api(user, passwd)
     exp_id = helpers.get_current_experiment(api, opts.experiment_id)
 
-    # Fetch token from new API
+    # Fetch token from API
     host = urlparse(api.url).netloc
     api_url = f"https://{host}/api/experiments/{exp_id}/token"
-    request_kwargs = {'auth_username': user, 'auth_password': passwd}
-    request = tornado.httpclient.HTTPRequest(api_url, **request_kwargs)
-    request.headers["Content-Type"] = "application/json"
-    client = tornado.httpclient.HTTPClient()
+    credentials = base64.b64encode(f"{user}:{passwd}".encode()).decode()
+    request = urllib.request.Request(
+        api_url,
+        headers={
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/json",
+        },
+    )
 
     try:
-        token_response = client.fetch(request).buffer.read()
-    except tornado.httpclient.HTTPClientError as exc:
+        with urllib.request.urlopen(request) as response:
+            token_response = response.read()
+    except urllib.error.HTTPError as exc:
         # pylint:disable=superfluous-parens
         print(f"Failed to fetch token from API: {exc}")
         return 1
 
-    token = json.loads(token_response.decode())['token']
-    nodes = common.list_nodes(api, exp_id, opts.nodes_list,
-                              opts.exclude_nodes_list)
+    token = json.loads(token_response.decode())["token"]
+    nodes = common.list_nodes(
+        api, exp_id, opts.nodes_list, opts.exclude_nodes_list
+    )
 
     # Only if nodes_list or exclude_nodes_list is not specify (nodes = [])
     if not nodes:
         nodes = _get_experiment_nodes_list(api, exp_id)
 
     # Drop A8 nodes
-    nodes = [node for node in nodes if not node.startswith('a8')]
+    nodes = [node for node in nodes if not node.startswith("a8")]
 
     if not nodes:
         return 1
@@ -121,7 +122,7 @@ def parse_and_run(opts):
     return start(Session(host, exp_id, user, token), nodes)
 
 
-def main(args=None):
+def main(args: Optional[list[str]] = None) -> None:
     """Websocket client cli parser."""
     args = args or sys.argv[1:]  # required for easy testing.
     parser = parse_options()

@@ -19,73 +19,76 @@
 # The fact that you are presently reading this means that you have had
 # knowledge of the CeCILL license and that you accept its terms.
 
-""" common TestCase class for testing commands """
+"""common TestCase class for testing commands"""
 
 import sys
-import io
 import unittest
+from typing import Any, Optional
+from unittest.mock import Mock, patch
 
-from mock import Mock, patch
-
-from iotlabcli.rest import Api
 from iotlabcli.helpers import json_dumps
+from iotlabcli.rest import Api
+
+API_RET: dict[str, str] = {"result": "test"}
 
 
-API_RET = {"result": "test"}
+class RequestRet:  # pylint:disable=too-few-public-methods
+    """Mock of Request return value"""
 
-
-class RequestRet():  # pylint:disable=too-few-public-methods
-    """ Mock of Request return value """
-
-    def __init__(self, status_code, content, headers=None):
+    def __init__(
+        self, status_code: int, content: str, headers: Optional[dict] = None
+    ) -> None:
         self.status_code = status_code
-        self.content = content.encode('utf-8')
+        self.content = content.encode("utf-8")
         self.headers = headers
-        self.text = self.content.decode('utf-8')
+        self.text = self.content.decode("utf-8")
 
 
-def api_mock(ret=None):
-    """ Return a mock of an api object
+def api_mock(ret: Optional[dict[str, Any]] = None) -> Mock:
+    """Return a mock of an api object
     returned value for api methods will be 'ret' parameter or API_RET
     """
     ret = ret or API_RET
     ret_val = RequestRet(content=json_dumps(ret), status_code=200)  # HTTP OK
-    patch('requests.request', return_value=ret_val).start()
-    api_class = patch('iotlabcli.rest.Api').start()
-    api_class.return_value = Mock(wraps=Api('user', 'password'))
+    patch("requests.request", return_value=ret_val).start()
+    api_class = patch("iotlabcli.rest.Api").start()
+    api_class.return_value = Mock(wraps=Api("user", "password"))
     api_class.return_value.url = "https://localhost/test"
     return api_class.return_value
 
 
-def api_mock_stop():
-    """ Stop all patches started by api_mock.
-    Actually it stops everything but not a problem """
+def api_mock_stop() -> None:
+    """Stop all patches started by api_mock.
+    Actually it stops everything but not a problem"""
     patch.stopall()
 
 
-class ResponseBuffer:  # pylint:disable=too-few-public-methods
-    """Test class containing the response of a token request."""
-    def __init__(self, buf):
-        self.buffer = io.BytesIO(buf)
-
-
 class MainMock(unittest.TestCase):
-    """ Common mock needed for testing main function of parsers """
-    def setUp(self):
+    """Common mock needed for testing main function of parsers"""
+
+    def setUp(self) -> None:
         self.api = api_mock()
 
-        patch('sys.stderr', sys.stdout).start()
-        patch('iotlabcli.parser.common.sites_list', Mock(
-            return_value=['grenoble', 'strasbourg',
-                          'euratech', 'saclay'])).start()
+        patch("sys.stderr", sys.stdout).start()
+        patch(
+            "iotlabcli.parser.common.sites_list",
+            Mock(
+                return_value=["grenoble", "strasbourg", "euratech", "saclay"]
+            ),
+        ).start()
 
-        patch('iotlabcli.auth.get_user_credentials',
-              Mock(return_value=('username', 'password'))).start()
+        patch(
+            "iotlabcli.auth.get_user_credentials",
+            Mock(return_value=("username", "password")),
+        ).start()
 
-        get_exp = (lambda a, x, running_only=True:
-                   x if x is not None else (123 if running_only else 234))
-        patch('iotlabcli.helpers.get_current_experiment', get_exp).start()
+        def get_exp(
+            _: Any, x: Optional[int], running_only: bool = True
+        ) -> int:
+            return x if x is not None else (123 if running_only else 234)
 
-    def tearDown(self):
+        patch("iotlabcli.helpers.get_current_experiment", get_exp).start()
+
+    def tearDown(self) -> None:
         api_mock_stop()
         patch.stopall()
